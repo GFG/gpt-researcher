@@ -75,13 +75,13 @@ class ReportGenerator:
 
         report = await generate_report(**report_params)
 
-        # if self.researcher.verbose:
-        #     await stream_output(
-        #         "logs",
-        #         "report_written",
-        #         f"📝 Report written for '{self.researcher.query}'",
-        #         self.researcher.websocket,
-        #     )
+        if self.researcher.verbose:
+            await stream_output(
+                "logs",
+                "report_written",
+                f"📝 Report written for '{self.researcher.query}'",
+                self.researcher.websocket,
+            )
 
         return report
 
