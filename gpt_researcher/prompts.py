@@ -82,6 +82,7 @@ You MUST write all used source document names at the end of the report as refere
     tone_prompt = f"Write the report in a {tone.value} tone." if tone else ""
 
     return f"""
+Formatting is enabled.
 Information: "{context}"
 ---
 Using the above information, answer the following query or task: "{question}" in a detailed report --
@@ -359,6 +360,7 @@ def generate_subtopic_report_prompt(
     language: str = "english",
 ) -> str:
     return f"""
+Formatting is enabled.
 Context:
 "{context}"
 
