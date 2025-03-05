@@ -399,8 +399,8 @@ IMPORTANT:Content and Sections Uniqueness:
     
     This is a sample text. ([url website](url))
 
-- Use H2 for the main subtopic header (##) and H3 for subsections (###).
-- Use smaller Markdown headers (e.g., H2 or H3) for content structure, avoiding the largest header (H1) as it will be used for the larger report's heading.
+- Use H3 for the main subtopic header (###) and H4 for subsections (####).
+- Use smaller Markdown headers (e.g., H3 or H4) for content structure, avoiding the largest header (H2) as it will be used for the larger report's heading.
 - Organize your content into distinct sections that complement but do not overlap with existing reports.
 - When adding similar or identical subsections to your report, you should clearly indicate the differences between and the new content and the existing written content from previous subtopic reports. For example:
 
@@ -441,15 +441,15 @@ Using the latest information available, construct a draft section title headers 
 1. Create a list of draft section title headers for the subtopic report.
 2. Each header should be concise and relevant to the subtopic.
 3. The header should't be too high level, but detailed enough to cover the main aspects of the subtopic.
-4. Use markdown syntax for the headers, using H3 (###) as H1 and H2 will be used for the larger report's heading.
+4. Use markdown syntax for the headers, using H4 (####) as H2 and H3 will be used for the larger report's heading.
 5. Ensure the headers cover main aspects of the subtopic.
 
 "Structure and Formatting":
 Provide the draft headers in a list format using markdown syntax, for example:
 
-### Header 1
-### Header 2
-### Header 3
+#### Header 1
+#### Header 2
+#### Header 3
 
 "IMPORTANT!":
 - The focus MUST be on the main topic! You MUST Leave out any information un-related to it!
@@ -463,7 +463,7 @@ def generate_report_introduction(question: str, research_summary: str = "", lang
 Using the above latest information, Prepare a detailed report introduction on the topic -- {question}.
 - The introduction should be succinct, well-structured, informative with markdown syntax.
 - As this introduction will be part of a larger report, do NOT include any other sections, which are generally present in a report.
-- The introduction should be preceded by an H1 heading with a suitable topic for the entire report.
+- The introduction should be preceded by an H2 heading with a suitable topic for the entire report.
 - You must include hyperlinks with markdown syntax ([url website](url)) related to the sentences wherever necessary.
 Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required.
 - The output must be in {language} language.
@@ -495,7 +495,7 @@ def generate_report_conclusion(query: str, report_content: str, language: str = 
     3. Discuss any implications or next steps
     4. Be approximately 2-3 paragraphs long
     
-    If there is no "## Conclusion" section title written at the end of the report, please add it to the top of your conclusion. 
+    If there is no "### Conclusion" section title written at the end of the report, please add it to the top of your conclusion. 
     You must include hyperlinks with markdown syntax ([url website](url)) related to the sentences wherever necessary.
 
     IMPORTANT: The entire conclusion MUST be written in {language} language.
