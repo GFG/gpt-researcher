@@ -18,7 +18,10 @@ async def get_search_results(query: str, retriever: Any, query_domains: List[str
     Returns:
         A list of search results
     """
-    search_retriever = retriever(query, query_domains=query_domains)
+    if query_domains:
+        search_retriever = retriever(query, query_domains=query_domains)
+    else:
+        search_retriever = retriever(query)
     return search_retriever.search()
 
 async def generate_sub_queries(

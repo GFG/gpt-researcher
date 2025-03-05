@@ -14,7 +14,7 @@ import os
 
 
 def get_llm(llm_provider, **kwargs):
-    from gpt_researcher.llm_provider import GenericLLMProvider
+    from ..llm_provider import GenericLLMProvider
     return GenericLLMProvider.from_provider(llm_provider, **kwargs)
 
 

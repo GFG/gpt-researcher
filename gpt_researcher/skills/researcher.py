@@ -1,3 +1,16 @@
+# researcher.py - Core research orchestration for GPT-Researcher
+#
+# This file defines the ResearchConductor class which manages the entire research process.
+# It handles different research sources (web, local documents, vector stores) and
+# coordinates the gathering and processing of information.
+#
+# Key workflow:
+# 1. Initialize with a researcher instance (GPTResearcher)
+# 2. Plan research by generating sub-queries
+# 3. Gather information from appropriate sources based on configuration
+# 4. Process and filter the gathered information
+# 5. Return a consolidated research context for report generation
+
 import asyncio
 import random
 import logging
@@ -7,21 +20,32 @@ from ..actions.query_processing import plan_research_outline, get_search_results
 from ..document import DocumentLoader, OnlineDocumentLoader, LangChainDocumentLoader
 from ..utils.enum import ReportSource
 from ..utils.logging_config import get_json_handler
+from typing import Optional, List, Dict, Any
 
 
 class ResearchConductor:
     """Manages and coordinates the research process."""
 
     def __init__(self, researcher):
+        # Store reference to the parent GPTResearcher instance
         self.researcher = researcher
         self.logger = logging.getLogger('research')
         self.json_handler = get_json_handler()
 
     async def plan_research(self, query, query_domains=None):
+        """
+        Plan the research by generating sub-queries based on the main query.
+        
+        This method:
+        1. Performs initial web search to understand the topic
+        2. Uses LLM to generate a research outline with sub-queries
+        3. Returns a list of sub-queries to investigate
+        """
         self.logger.info(f"Planning research for query: {query}")
         if query_domains:
             self.logger.info(f"Query domains: {query_domains}")
         
+        # Notify user that we're starting the research planning
         await stream_output(
             "logs",
             "planning_research",
@@ -29,6 +53,7 @@ class ResearchConductor:
             self.researcher.websocket,
         )
 
+        # Get initial search results to understand the topic
         search_results = await get_search_results(query, self.researcher.retrievers[0], query_domains)
         self.logger.info(f"Initial search results obtained: {len(search_results)} results")
 
@@ -39,6 +64,7 @@ class ResearchConductor:
             self.researcher.websocket,
         )
 
+        # Generate a research outline with sub-queries using LLM
         outline = await plan_research_outline(
             query=query,
             search_results=search_results,
@@ -52,7 +78,15 @@ class ResearchConductor:
         return outline
 
     async def conduct_research(self):
-        """Runs the GPT Researcher to conduct research"""
+        """
+        Main research orchestration method.
+        
+        This method:
+        1. Determines which research source to use (web, local, vector store, etc.)
+        2. Calls the appropriate methods to gather information
+        3. Processes and curates the gathered information
+        4. Returns the consolidated research context
+        """
         if self.json_handler:
             self.json_handler.update_content("query", self.researcher.query)
         
@@ -76,7 +110,11 @@ class ResearchConductor:
                 self.researcher.websocket
             )
 
-        # Research for relevant sources based on source types below
+        # RESEARCH SOURCE SELECTION
+        # The system supports multiple research sources and selects the appropriate one
+        # based on configuration. Each source has its own data gathering approach.
+        
+        # 1. SPECIFIC SOURCE URLS: Use provided URLs as research sources
         if self.researcher.source_urls:
             self.logger.info("Using provided source URLs")
             research_data = await self._get_context_by_urls(self.researcher.source_urls)
@@ -87,37 +125,40 @@ class ResearchConductor:
                     f"🧐 I was unable to find relevant context in the provided sources...",
                     self.researcher.websocket,
                 )
+            # Optionally complement with web search if configured
             if self.researcher.complement_source_urls:
                 self.logger.info("Complementing with web search")
                 additional_research = await self._get_context_by_web_search(self.researcher.query, [], self.researcher.query_domains)
                 research_data += ' '.join(additional_research)
 
+        # 2. WEB SEARCH: Use web search as the primary research source
         elif self.researcher.report_source == ReportSource.Web.value:
             self.logger.info("Using web search")
             research_data = await self._get_context_by_web_search(self.researcher.query, [], self.researcher.query_domains)
-
-        # ... rest of the conditions ...
+            
+        # 3. LOCAL DOCUMENTS: Use local document search
+        # This loads documents from a local path and optionally adds them to the vector store
         elif self.researcher.report_source == ReportSource.Local.value:
             self.logger.info("Using local search")
             document_data = await DocumentLoader(self.researcher.cfg.doc_path).load()
             self.logger.info(f"Loaded {len(document_data)} documents")
+            
+            # If vector store is available, load documents into it for searching
             if self.researcher.vector_store:
                 self.researcher.vector_store.load(document_data)
 
             research_data = await self._get_context_by_web_search(self.researcher.query, document_data, self.researcher.query_domains)
 
-        # Hybrid search including both local documents and web sources
+        # 4. HYBRID SEARCH: Combine vector db (internal knowledge base) and web search
+        # This approach uses both document sources and web sources
         elif self.researcher.report_source == ReportSource.Hybrid.value:
-            if self.researcher.document_urls:
-                document_data = await OnlineDocumentLoader(self.researcher.document_urls).load()
-            else:
-                document_data = await DocumentLoader(self.researcher.cfg.doc_path).load()
-            if self.researcher.vector_store:
-                self.researcher.vector_store.load(document_data)
-            docs_context = await self._get_context_by_web_search(self.researcher.query, document_data, self.researcher.query_domains)
+            # Get context from both document sources and web sources
+            docs_context = await self._get_context_by_vectorstore(self.researcher.query, self.researcher.vector_store_filter)
             web_context = await self._get_context_by_web_search(self.researcher.query, [], self.researcher.query_domains)
-            research_data = f"Context from local documents: {docs_context}\n\nContext from web sources: {web_context}"
+            # research_data = f"Context from the internal knowledge base: {docs_context}\n\nContext from the web: {web_context}"
+            research_data = docs_context + web_context
 
+        # 5. AZURE STORAGE: Use documents from Azure blob storage
         elif self.researcher.report_source == ReportSource.Azure.value:
             from ..document.azure_document_loader import AzureDocumentLoader
             azure_loader = AzureDocumentLoader(
@@ -127,21 +168,28 @@ class ResearchConductor:
             azure_files = await azure_loader.load()
             document_data = await DocumentLoader(azure_files).load()  # Reuse existing loader
             research_data = await self._get_context_by_web_search(self.researcher.query, document_data)
-            
+
+        # 6. LANGCHAIN DOCUMENTS: Use provided Langchain documents
         elif self.researcher.report_source == ReportSource.LangChainDocuments.value:
             langchain_documents_data = await LangChainDocumentLoader(
                 self.researcher.documents
             ).load()
+            
+            # If vector store is available, load documents into it
             if self.researcher.vector_store:
                 self.researcher.vector_store.load(langchain_documents_data)
+                
             research_data = await self._get_context_by_web_search(
                 self.researcher.query, langchain_documents_data, self.researcher.query_domains
             )
 
+        # 7. VECTOR STORE: Use the provided vector store directly
+        # This is the most direct use of the vector store - searching it without loading new documents
         elif self.researcher.report_source == ReportSource.LangChainVectorStore.value:
             research_data = await self._get_context_by_vectorstore(self.researcher.query, self.researcher.vector_store_filter)
 
-        # Rank and curate the sources
+        # FINALIZE RESEARCH
+        # Store the gathered research data and optionally curate it
         self.researcher.context = research_data
         if self.researcher.cfg.curate_sources:
             self.logger.info("Curating sources")
@@ -159,34 +207,50 @@ class ResearchConductor:
                 self.json_handler.update_content("context", self.researcher.context)
 
         self.logger.info(f"Research completed. Context size: {len(str(self.researcher.context))}")
+        
         return self.researcher.context
 
     async def _get_context_by_urls(self, urls):
-        """Scrapes and compresses the context from the given urls"""
+        """
+        Scrapes content from provided URLs and adds it to the research context.
+        
+        This method:
+        1. Filters out already visited URLs
+        2. Scrapes content from new URLs
+        3. Optionally loads content into vector store
+        4. Retrieves relevant content based on the query
+        """
         self.logger.info(f"Getting context from URLs: {urls}")
         
         new_search_urls = await self._get_new_urls(urls)
         self.logger.info(f"New URLs to process: {new_search_urls}")
 
+        # Scrape content from the URLs
         scraped_content = await self.researcher.scraper_manager.browse_urls(new_search_urls)
         self.logger.info(f"Scraped content from {len(scraped_content)} URLs")
 
+        # If vector store is available, load scraped content into it
+        # This allows the content to be searched in future queries
         if self.researcher.vector_store:
             self.logger.info("Loading content into vector store")
             self.researcher.vector_store.load(scraped_content)
 
+        # Get relevant content based on the query
         context = await self.researcher.context_manager.get_similar_content_by_query(
             self.researcher.query, scraped_content
         )
         return context
 
-    # Add logging to other methods similarly...
-
-    async def _get_context_by_vectorstore(self, query, filter: dict | None = None):
+    async def _get_context_by_vectorstore(self, query, filter: Optional[dict] = None):
         """
-        Generates the context for the research task by searching the vectorstore
-        Returns:
-            context: List of context
+        Searches the vector store for relevant content based on the query.
+        
+        This method:
+        1. Plans research by generating sub-queries
+        2. Searches the vector store for each sub-query
+        3. Returns the combined search results
+        
+        This is the primary method that uses the vector store for retrieval.
         """
         self.logger.info(f"Starting vectorstore search for query: {query}")
         context = []
@@ -207,6 +271,7 @@ class ResearchConductor:
             )
 
         # Using asyncio.gather to process the sub_queries asynchronously
+        # Each sub-query is searched in the vector store
         context = await asyncio.gather(
             *[
                 self._process_sub_query_with_vectorstore(sub_query, filter)
@@ -283,17 +348,21 @@ class ResearchConductor:
             )
 
         try:
+            # If no scraped data is provided, scrape new data
             if not scraped_data:
                 scraped_data = await self._scrape_data_by_urls(sub_query, query_domains)
                 self.logger.info(f"Scraped data size: {len(scraped_data)}")
 
+            # Get relevant content based on the sub-query
             content = await self.researcher.context_manager.get_similar_content_by_query(sub_query, scraped_data)
             self.logger.info(f"Content found for sub-query: {len(str(content)) if content else 0} chars")
 
+            # Log the content if available
             if content and self.researcher.verbose:
-                await stream_output(
-                    "logs", "subquery_context_window", f"📃 {content}", self.researcher.websocket
-                )
+                # await stream_output(
+                #     "logs", "subquery_context_window", f"📃 {content}", self.researcher.websocket
+                # )
+                pass
             elif self.researcher.verbose:
                 await stream_output(
                     "logs",
@@ -329,12 +398,16 @@ class ResearchConductor:
                 self.researcher.websocket,
             )
 
+        # Search the vector store for content relevant to the sub-query
+        # This calls a method in the context_manager that performs the actual search
         content = await self.researcher.context_manager.get_similar_content_by_query_with_vectorstore(sub_query, filter)
 
+        # Log the content if available
         if content and self.researcher.verbose:
-            await stream_output(
-                "logs", "subquery_context_window", f"📃 {content}", self.researcher.websocket
-            )
+            # await stream_output(
+            #     "logs", "subquery_context_window", f"📃 {content}", self.researcher.websocket
+            # )
+            pass
         elif self.researcher.verbose:
             await stream_output(
                 "logs",
@@ -359,7 +432,7 @@ class ResearchConductor:
                     await stream_output(
                         "logs",
                         "added_source_url",
-                        f"✅ Added source url to research: {url}\n",
+                        f"- Added source url to research: {url}\n",
                         self.researcher.websocket,
                         True,
                         url,
@@ -374,17 +447,28 @@ class ResearchConductor:
 
         # Iterate through all retrievers
         for retriever_class in self.researcher.retrievers:
-            # Instantiate the retriever with the sub-query
-            retriever = retriever_class(query, query_domains=query_domains)
+            # Instantiate the retriever with the sub-query, handle incompatible parameters
+            try:
+                if query_domains:
+                    try:
+                        retriever = retriever_class(query, query_domains=query_domains)
+                    except TypeError:
+                        # If query_domains isn't supported, initialize without it
+                        retriever = retriever_class(query)
+                else:
+                    retriever = retriever_class(query)
 
-            # Perform the search using the current retriever
-            search_results = await asyncio.to_thread(
-                retriever.search, max_results=self.researcher.cfg.max_search_results_per_query
-            )
+                # Perform the search using the current retriever
+                search_results = await asyncio.to_thread(
+                    retriever.search, max_results=self.researcher.cfg.max_search_results_per_query
+                )
 
-            # Collect new URLs from search results
-            search_urls = [url.get("href") for url in search_results]
-            new_search_urls.extend(search_urls)
+                # Collect new URLs from search results
+                search_urls = [url.get("href") for url in search_results]
+                new_search_urls.extend(search_urls)
+            except Exception as e:
+                self.logger.error(f"Error with retriever {retriever_class.__name__}: {e}")
+                continue
 
         # Get unique URLs
         new_search_urls = await self._get_new_urls(new_search_urls)

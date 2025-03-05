@@ -56,9 +56,9 @@ class ContextManager:
 
         if relevant_contents and self.researcher.verbose:
             prettier_contents = "\n".join(relevant_contents)
-            await stream_output(
-                "logs", "relevant_contents_context", f"📃 {prettier_contents}", self.researcher.websocket
-            )
+            # await stream_output(
+            #     "logs", "relevant_contents_context", f"📃 {prettier_contents}", self.researcher.websocket
+            # )
 
         return relevant_contents
 
