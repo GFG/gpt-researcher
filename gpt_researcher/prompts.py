@@ -333,12 +333,14 @@ and research data:
 
 - Construct a list of subtopics which indicate the headers of a report document to be generated on the task. 
 - These are a possible list of subtopics : {subtopics}.
-- There should NOT be any duplicate subtopics.
+- There must NOT be any duplicate subtopics, near-duplicate, or overlapping subtopics (subtopics that cover essentially the same content with slightly different wording).
 - Limit the number of subtopics to a maximum of {max_subtopics}
 - Finally order the subtopics by their tasks, in a relevant and meaningful order which is presentable in a detailed report
 
 "IMPORTANT!":
 - Every subtopic MUST be relevant to the main topic and provided research data ONLY!
+- Ensure each subtopic covers a distinct aspect of the main topic with no content overlap between subtopics.
+- Check for semantic similarity between subtopics - if two potential subtopics would result in similar content, combine them into one more comprehensive subtopic.
 
 {format_instructions}
 """
